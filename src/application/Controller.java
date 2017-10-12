@@ -1,5 +1,6 @@
 package application;
 
+import java.io.File;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -21,6 +22,10 @@ import javafx.fxml.FXML;
 import javafx.scene.control.Slider;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.stage.FileChooser;
+import javafx.stage.FileChooser.ExtensionFilter;
+import javafx.stage.Stage;
+import javafx.stage.Window;
 import utilities.Utilities;
 
 public class Controller {
@@ -73,7 +78,22 @@ public class Controller {
 	private String getImageFilename() {
 		// This method should return the filename of the image to be played
 		// You should insert your code here to allow user to select the file
-		return "resources/test.mp4";
+		
+		 FileChooser fileChooser = new FileChooser();
+		 fileChooser.setTitle("Open Resource File");
+		 fileChooser.getExtensionFilters().addAll(
+		         new ExtensionFilter("Text Files", "*.txt"),
+		         new ExtensionFilter("Image Files", "*.png", "*.jpg", "*.gif"),
+		         new ExtensionFilter("Audio Files", "*.wav", "*.mp3", "*.aac"),
+		         new ExtensionFilter("All Files", "*.*"));
+		 File selectedFile = fileChooser.showOpenDialog(null);
+//		 if (selectedFile != null) {
+//			 newWindow.display(selectedFile);
+//		 }
+		return selectedFile.getAbsolutePath();
+		
+		
+		//return "resources/test.mp4";
 	}
 	
 	@FXML
