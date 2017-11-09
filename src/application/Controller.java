@@ -1,11 +1,14 @@
 package application;
 
+import java.awt.Color;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import javax.imageio.ImageIO;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
@@ -17,7 +20,6 @@ import javax.sound.sampled.UnsupportedAudioFileException;
 
 import org.opencv.core.Mat;
 import org.opencv.core.Size;
-import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.videoio.Videoio;
@@ -31,8 +33,6 @@ import javafx.scene.image.ImageView;
 import javafx.scene.text.Text;
 import javafx.stage.FileChooser;
 import javafx.stage.FileChooser.ExtensionFilter;
-import javafx.stage.Stage;
-import javafx.stage.Window;
 import utilities.Utilities;
 
 public class Controller {
@@ -60,6 +60,7 @@ public class Controller {
 	
 	private int width;
 	private int height;
+	private int center;
 	private int sampleRate; // sampling frequency
 	private int sampleSizeInBits;
 	private int numberOfChannels;
@@ -71,8 +72,9 @@ public class Controller {
 	private void initialize() {
 		// Optional: You should modify the logic so that the user can change these values
 		// You may also do some experiments with different values
-		width = 64;
-		height = 64;
+		width = 32;
+		height = 32;
+		center = 15;
 		sampleRate = 8000;
 		sampleSizeInBits = 8;
 		numberOfChannels = 1;
@@ -80,7 +82,6 @@ public class Controller {
 		numberOfQuantizionLevels = 16;
 		
 		numberOfSamplesPerColumn = 125;
-		
 		
 		timer1 = Executors.newSingleThreadScheduledExecutor();
 		timer2 = Executors.newSingleThreadScheduledExecutor();
@@ -100,24 +101,17 @@ public class Controller {
 	
 	private String getImageFilename() {
 		// This method should return the filename of the image to be played
-		// You should insert your code here to allow user to select the file
-		
 		 FileChooser fileChooser = new FileChooser();
 		 fileChooser.setTitle("Open Resource File");
 		 fileChooser.getExtensionFilters().addAll(
 				 new ExtensionFilter("Video Files", "*.mp4", "*.mpeg", "*.avi"),
 				 new ExtensionFilter("Audio Files", "*.wav", "*.mp3", "*.aac"),
-		        // new ExtensionFilter("Image Files", "*.png", "*.jpg", "*.gif"),
 		         new ExtensionFilter("All Files", "*.*"));
 		 File selectedFile = fileChooser.showOpenDialog(null);
-//		 if (selectedFile != null) {
-//			 newWindow.display(selectedFile);
-//		 }
 		 if (selectedFile == null) {
 			 return "empty";
 		 }
 		return selectedFile.getAbsolutePath();
-		
 		
 		//return "resources/test.mp4";
 	}
@@ -134,7 +128,6 @@ public class Controller {
 	@FXML
 	protected void openImage(ActionEvent event) throws InterruptedException {
 		// This method opens an image and display it using the GUI
-		// You should modify the logic so that it opens and displays a video
 //		final String imageFilename = getImageFilename();
 //		image = Imgcodecs.imread(imageFilename);
 //		imageView.setImage(Utilities.mat2Image(image)); 
@@ -150,7 +143,6 @@ public class Controller {
 			playbutton.setText("Play");
 			textbox.setText("Press Play");
 			textbox.setVisible(true);
-			
 		}
 		
 		// You don't have to understand how mat2Image() works. 
@@ -163,7 +155,11 @@ public class Controller {
 	protected void createFrameGrabber() throws InterruptedException {
 		if (capture != null && capture.isOpened()) { // the video must be open
 			//double framePerSecond = capture.get(Videoio.CAP_PROP_FPS);
-			double framePerSecond = 1;
+			double totalFrameCount = capture.get(Videoio.CAP_PROP_FRAME_COUNT);
+			int frameHeight = (int) capture.get(Videoio.CAP_PROP_FRAME_HEIGHT);
+			int frameCount = (int) totalFrameCount;
+			double framePerSecond = 200;
+			int[][] STI_vertical = new int[frameCount][frameHeight];
 		// create a runnable to fetch new frames periodically
 			Runnable frameGrabber = new Runnable() {
 				@Override
@@ -171,13 +167,41 @@ public class Controller {
 					Mat frame = new Mat();
 					if (capture.read(frame)) { // decode successfully
 						image = frame;
+				
 						Image im = Utilities.mat2Image(frame);
 						Utilities.onFXThread(imageView.imageProperty(), im);
 						double currentFrameNumber = capture.get(Videoio.CAP_PROP_POS_FRAMES);
-						double totalFrameCount = capture.get(Videoio.CAP_PROP_FRAME_COUNT);
+						
+//						double totalFrameCount = capture.get(Videoio.CAP_PROP_FRAME_COUNT);
+						int frameCount = (int) currentFrameNumber;
+						columnGrabber(frame, STI_vertical[frameCount - 1], frameHeight);
 						slider.setValue(currentFrameNumber / totalFrameCount * (slider.getMax() - slider.getMin()));
+//						if (currentFrameNumber == frameCount) {
+//							for (int i=0;i<frameCount-2;i++) {
+//								for (int j=0;j<frameHeight;j++) {
+//									System.out.print(STI_vertical[i][j]);
+//								}
+//								System.out.println(" ");
+//							}
+//						}
 					} else { // reach the end of the video
-						capture.set(Videoio.CAP_PROP_POS_FRAMES, 0);
+//						capture.set(Videoio.CAP_PROP_POS_FRAMES, 0);
+						timer1.shutdown();
+						BufferedImage STI = new BufferedImage(frameCount, frameHeight, BufferedImage.TYPE_INT_ARGB);
+						for (int i=0;i<frameCount;i++) {
+							for (int j=0;j<frameHeight;j++) {
+								Color c = new Color(STI_vertical[i][j], true);
+								STI.setRGB(i, j, c.getRGB());
+							}
+						}
+						try {
+							ImageIO.write(STI, "png", new File("STIimage.png"));
+						} catch (IOException e) {
+							// TODO Auto-generated catch block
+							System.out.println("wrong");
+							e.printStackTrace();
+						}
+						
 					}
 				}
 			};
@@ -188,14 +212,25 @@ public class Controller {
 				timer1.shutdown();
 				timer1.awaitTermination(Math.round(1000/framePerSecond), TimeUnit.MILLISECONDS);
 			}
-			
-			
 			// run the frame grabber
 			timer1 = Executors.newSingleThreadScheduledExecutor();
 			timer1.scheduleAtFixedRate(frameGrabber, 0, Math.round(1000/framePerSecond), TimeUnit.MILLISECONDS);
 			}
 		}
 	
+	protected void columnGrabber(Mat original, int[] rgbs, int frameHeight) {
+		BufferedImage image = Utilities.matToBufferedImage(original);
+	    for (int i=0;i<frameHeight;i++) {
+	    	rgbs[i] = image.getRGB(center, i);
+	    	//System.out.println(rgbs[i]);
+	    }
+
+//	    for (int i=0;i<rgbs.length;i++) {
+//	    	System.out.print(rgbs[i]);
+//	    }
+//	    System.out.println(" ");
+	    
+	}
 
 	@FXML
 	protected void playVideo(ActionEvent event) throws LineUnavailableException, InterruptedException {
@@ -218,16 +253,13 @@ public class Controller {
 			@Override
 			public void run()  {
 				try {
-					
 					playImage();
 					playClick();
 					
 				} catch (LineUnavailableException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 				catch (IOException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 			}
@@ -239,7 +271,6 @@ public class Controller {
 		timer2 = Executors.newSingleThreadScheduledExecutor();
 		timer2.scheduleAtFixedRate(audioGrabber, 0, Math.round(1000/framePerSecond), TimeUnit.MILLISECONDS);
 	}
-	
 	
 	protected float getVolume(Clip clip) {
 	    FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);        
@@ -266,15 +297,14 @@ public class Controller {
 	    gainControl.setValue(20f * (float) Math.log10(volume));
 	}
 	
-	
-	
 	protected void playClick() throws IOException, LineUnavailableException {
 		try {
 			File soundFile = new File("resources/click.wav");
 			AudioInputStream audioIn = AudioSystem.getAudioInputStream(soundFile);
 			Clip clip = AudioSystem.getClip();
 			clip.open(audioIn);
-			setVolume(0.2f, clip);
+			float volume = (float) (volumeAdjuster.getValue()/(slider.getMax() - slider.getMin()));
+			setVolume(volume * 1f, clip);
 			clip.start();
 		}
 		catch (UnsupportedAudioFileException e) {
@@ -282,12 +312,9 @@ public class Controller {
 		}
 	}
 	
-	protected void playImage() throws LineUnavailableException {
-		// This method "plays" the image opened by the user
-		// You should modify the logic so that it plays a video rather than an image
-		
+	protected void playImage() throws LineUnavailableException {		
 		if (image != null) {
-			// convert the image from RGB to grayscale
+			// convert the image from RGB to greyscale
 			Mat grayImage = new Mat();
 			Imgproc.cvtColor(image, grayImage, Imgproc.COLOR_BGR2GRAY);
 			
@@ -303,13 +330,10 @@ public class Controller {
 				}
 			}
 			
-			// I used an AudioFormat object and a SourceDataLine object to perform audio output. Feel free to try other options
 	        AudioFormat audioFormat = new AudioFormat(sampleRate, sampleSizeInBits, numberOfChannels, true, true);
             SourceDataLine sourceDataLine = AudioSystem.getSourceDataLine(audioFormat);
-            //setVolume(0.5f, sourceDataLine);
             sourceDataLine.open(audioFormat, sampleRate);
             
-            //slider.setValue(currentFrameNumber / totalFrameCount * (slider.getMax() - slider.getMin()));
             float volume = (float) (volumeAdjuster.getValue()/(slider.getMax() - slider.getMin()));
             setVolume(volume * 1f, sourceDataLine);
             sourceDataLine.start();
@@ -333,7 +357,6 @@ public class Controller {
             sourceDataLine.close();
 		} else {
 			//System.out.println("No image");
-			// What should you do here?
 		}
 	} 
 }
