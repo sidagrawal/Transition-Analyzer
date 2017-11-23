@@ -1,6 +1,8 @@
 package application;
 
 import java.awt.Color;
+import application.Hist;
+
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -57,6 +59,8 @@ public class Controller {
 	
 	
 	private VideoCapture capture;
+	private Hist[] currentHists;
+	private Hist[] preHists;
 	
 	private int width;
 	private int height;
@@ -156,40 +160,70 @@ public class Controller {
 		if (capture != null && capture.isOpened()) { // the video must be open
 			//double framePerSecond = capture.get(Videoio.CAP_PROP_FPS);
 			double totalFrameCount = capture.get(Videoio.CAP_PROP_FRAME_COUNT);
-			int frameHeight = (int) capture.get(Videoio.CAP_PROP_FRAME_HEIGHT);
-			int frameWidth = (int) capture.get(Videoio.CAP_PROP_FRAME_WIDTH);
+//			int frameHeight = (int) capture.get(Videoio.CAP_PROP_FRAME_HEIGHT);
+//			int frameWidth = (int) capture.get(Videoio.CAP_PROP_FRAME_WIDTH);
+			int frameHeight = 32;
+			int frameWidth = 32;
 			int frameCount = (int) totalFrameCount;
-			double framePerSecond = 400;
+			double framePerSecond = 24;
 			int[][] STI_vertical = new int[frameCount][frameHeight];
 			int[][] STI_horizontal = new int[frameCount][frameWidth];
+			float[][] STI_histdiff = new float[frameCount][frameWidth];
+			
 		// create a runnable to fetch new frames periodically
 			Runnable frameGrabber = new Runnable() {
 				@Override
 				public void run() {
-					Mat frame = new Mat();
-					if (capture.read(frame)) { // decode successfully
-						image = frame;
-				
+					Mat frame2 = new Mat();
+					if (capture.read(frame2)) { // decode successfully
+						Mat frame = new Mat();
+						Imgproc.resize(frame2, frame, new Size(width, height));
+						
 						Image im = Utilities.mat2Image(frame);
 						Utilities.onFXThread(imageView.imageProperty(), im);
 						double currentFrameNumber = capture.get(Videoio.CAP_PROP_POS_FRAMES);
 						
 //						double totalFrameCount = capture.get(Videoio.CAP_PROP_FRAME_COUNT);
-						int frameCount = (int) currentFrameNumber;
-						columnGrabber(frame, STI_vertical[frameCount - 1], frameHeight, frameWidth);
-						rowGrabber(frame, STI_horizontal[frameCount - 1], frameWidth, frameHeight);
+						int currentframe = (int) currentFrameNumber;
+						columnGrabber(frame, STI_vertical[currentframe - 1], frameHeight, frameWidth);
+						rowGrabber(frame, STI_horizontal[currentframe - 1], frameWidth, frameHeight);
+						
+
+						if (currentframe == 1) {
+							currentHists = frameHist(frame, frameHeight, frameWidth);
+							preHists = currentHists;
+							
+//							System.out.println("end of the frame");
+						}
+						
+						preHists = currentHists;
+						currentHists = frameHist(frame, frameHeight, frameWidth);
+						float[] diffs = computediff(currentHists, preHists, frameWidth);
+//						for (int i=0;i<frameWidth;i++) {
+//						System.out.println("diff is " + diffs[i]);
+//					}
+						
+						
+						for (int i=0;i<frameWidth;i++) {
+							STI_histdiff[currentframe-1][i] = diffs[i];
+//							System.out.println("sti is " + STI_histdiff[currentframe-1][i]);
+						}
+						
+						
 						slider.setValue(currentFrameNumber / totalFrameCount * (slider.getMax() - slider.getMin()));
-//						if (currentFrameNumber == frameCount) {
-//							for (int i=0;i<frameCount-2;i++) {
-//								for (int j=0;j<frameHeight;j++) {
-//									System.out.print(STI_vertical[i][j]);
-//								}
-//								System.out.println(" ");
-//							}
-//						}
 					} else { // reach the end of the video
 //						capture.set(Videoio.CAP_PROP_POS_FRAMES, 0);
+						for (int i=0;i<frameCount;i++) {
+							for (int j=0;j<frameWidth;j++) {
+								System.out.print(STI_histdiff[i][j]);
+								System.out.print(" ");
+							}
+							System.out.println(" ");
+						}
+						
+						
 						timer1.shutdown();
+						
 						BufferedImage VImage = new BufferedImage(frameCount, frameHeight, BufferedImage.TYPE_INT_ARGB);
 						for (int i=0;i<frameCount;i++) {
 							for (int j=0;j<frameHeight;j++) {
@@ -233,24 +267,62 @@ public class Controller {
 		BufferedImage image = Utilities.matToBufferedImage(original);
 	    for (int i=0;i<frameHeight;i++) {
 	    	rgbs[i] = image.getRGB(frameWidth/2, i);
+	    	
 	    	//System.out.println(rgbs[i]);
-	    }
-
-//	    for (int i=0;i<rgbs.length;i++) {
-//	    	System.out.print(rgbs[i]);
-//	    }
-//	    System.out.println(" ");
-	    
+	    }	    
 	}
 	
 	protected void rowGrabber(Mat original, int[] rgbs, int frameWidth, int frameHeight) {
 		BufferedImage image = Utilities.matToBufferedImage(original);
 	    for (int i=0;i<frameWidth;i++) {
 	    	rgbs[i] = image.getRGB(i, frameHeight/2);
-	    	//System.out.println(rgbs[i]);
 	    }
 	}
-
+	
+	protected Hist[] frameHist(Mat original, int frameHeight, int frameWidth) {
+		int bins =(int) Math.floor(1.0 +Math.log10((double) frameHeight)/Math.log10(2.0));
+		Hist[] hists = new Hist[frameWidth];
+		for (int i=0;i<frameWidth;i++) {
+			Hist hist = new Hist(bins);
+			hist.columnHist(original, frameHeight, frameWidth, i);
+			convertor(hist, frameHeight);
+			hists[i] = hist;
+//			System.out.println(i + " frame");
+		}
+		return hists;
+	}
+	
+	protected void convertor(Hist ahist, int frameHeight) {
+		for (int i=0;i<ahist.getSize();i++) {
+			for (int j=0;j<ahist.getSize();j++) {
+				ahist.getHist()[i][j] = ahist.getHist()[i][j] / frameHeight;
+			}
+		}
+	}
+	
+	protected float[] computediff(Hist[] current, Hist[] pre, int frameWidth) {
+		float[] diff = new float[frameWidth];
+		for (int k=0;k<frameWidth;k++) {
+			for (int i=0;i<current[k].getSize();i++) {
+				for (int j=0;j<current[k].getSize();j++) {
+//					System.out.println("current is " + current[k].getHist()[i][j]);
+					if (current[k].getHist()[i][j] <= pre[k].getHist()[i][j]) {
+						diff[k] += current[k].getHist()[i][j];
+				} else {
+					diff[k] += pre[k].getHist()[i][j];
+				}
+			}
+//				System.out.println("diff is " + diff);
+		}
+		}
+//		for (int i=0;i<frameWidth;i++) {
+//			System.out.println("diff is " + diff[i]);
+//		}
+//		
+		return diff;
+	}
+	
+	
 	@FXML
 	protected void playVideo(ActionEvent event) throws LineUnavailableException, InterruptedException {
 		if (capture.isOpened()) {
