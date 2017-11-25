@@ -4,6 +4,8 @@ import java.awt.Color;
 import application.Hist;
 
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferByte;
+import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.Executors;
@@ -61,6 +63,7 @@ public class Controller {
 	private VideoCapture capture;
 	private Hist[] currentHists;
 	private Hist[] preHists;
+	private float threshold;
 	
 	private int width;
 	private int height;
@@ -79,6 +82,7 @@ public class Controller {
 		width = 32;
 		height = 32;
 		center = 50;
+		threshold = (float) 0.7;
 		sampleRate = 8000;
 		sampleSizeInBits = 8;
 		numberOfChannels = 1;
@@ -213,13 +217,15 @@ public class Controller {
 						slider.setValue(currentFrameNumber / totalFrameCount * (slider.getMax() - slider.getMin()));
 					} else { // reach the end of the video
 //						capture.set(Videoio.CAP_PROP_POS_FRAMES, 0);
-						for (int i=0;i<frameCount;i++) {
-							for (int j=0;j<frameWidth;j++) {
-								System.out.print(STI_histdiff[i][j]);
-								System.out.print(" ");
-							}
-							System.out.println(" ");
-						}
+//						for (int i=0;i<frameCount;i++) {
+//							for (int j=0;j<frameWidth;j++) {
+//								System.out.print(STI_histdiff[i][j]);
+//								System.out.print(" ");
+//							}
+//							System.out.println(" ");
+//						}
+						int[][] greyscale = createImage(STI_histdiff, frameCount, frameWidth);
+						int[][] binary = createBinary(STI_histdiff, frameCount, frameWidth, threshold);
 						
 						
 						timer1.shutdown();
@@ -238,9 +244,30 @@ public class Controller {
 								HImage.setRGB(i, j, c.getRGB());
 							}
 						}
+						BufferedImage HistImage = new BufferedImage(frameCount, frameWidth, BufferedImage.TYPE_INT_RGB);
+						for (int i=0;i<frameCount;i++) {
+							for (int j=0;j<frameWidth;j++) {
+								int value = greyscale[i][j];
+								Color c = new Color(value, value, value);
+								HistImage.setRGB(i, j, c.getRGB());
+							}
+						}
+						
+						BufferedImage BinaryImage = new BufferedImage(frameCount, frameWidth, BufferedImage.TYPE_INT_RGB);
+						for (int i=0;i<frameCount;i++) {
+							for (int j=0;j<frameWidth;j++) {
+								int value = binary[i][j];
+								Color c = new Color(value, value, value);
+								BinaryImage.setRGB(i, j, c.getRGB());
+							}
+						}						
+						
+						
 						try {
 							ImageIO.write(VImage, "png", new File("STI_VImage.png"));
 							ImageIO.write(HImage, "png", new File("STI_HImage.png"));
+							ImageIO.write(HistImage, "png", new File("STI_HistImage.png"));
+							ImageIO.write(BinaryImage, "png", new File("STI_BinaryImage.png"));
 						} catch (IOException e) {
 							// TODO Auto-generated catch block
 							System.out.println("wrong");
@@ -320,6 +347,30 @@ public class Controller {
 //		}
 //		
 		return diff;
+	}
+	
+	protected int[][] createImage(float[][] bytes, int frameCount, int frameWidth) {
+		int[][] greyscale = new int[frameCount][frameWidth];
+		for (int i=0;i<frameCount;i++) {
+			for (int j=0;j<frameWidth;j++) {
+				greyscale[i][j] =(int) Math.ceil(bytes[i][j] * 255);
+			}
+		}
+		return greyscale;
+	}
+	
+	protected int[][] createBinary(float[][] bytes, int frameCount, int frameWidth, float threshold) {
+		int[][] binary = new int[frameCount][frameWidth];
+		for (int i=0;i<frameCount;i++) {
+			for (int j=0;j<frameWidth;j++) {
+				if (bytes[i][j] >= threshold) {
+					binary[i][j] = 255;
+				} else {
+					binary[i][j] = 0;
+				}
+			}
+		}
+		return binary;
 	}
 	
 	
