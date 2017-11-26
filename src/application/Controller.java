@@ -4,8 +4,6 @@ import java.awt.Color;
 import application.Hist;
 
 import java.awt.image.BufferedImage;
-import java.awt.image.DataBufferByte;
-import java.awt.image.WritableRaster;
 import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.Executors;
@@ -13,27 +11,24 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import javax.imageio.ImageIO;
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.Clip;
-import javax.sound.sampled.FloatControl;
 import javax.sound.sampled.LineUnavailableException;
-import javax.sound.sampled.SourceDataLine;
-import javax.sound.sampled.UnsupportedAudioFileException;
-
 import org.opencv.core.Mat;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
 import org.opencv.videoio.Videoio;
 
+import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Slider;
+import javafx.scene.control.TextField;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.text.Text;
 import javafx.stage.FileChooser;
 import javafx.stage.FileChooser.ExtensionFilter;
@@ -43,72 +38,38 @@ public class Controller {
 	
 	@FXML
 	private ImageView imageView; // the image display window in the GUI
-	private Mat image;
 	
 	@FXML
-	private Slider slider = new Slider();
+	private Slider slider = new Slider();  //progress bar
 	@FXML
 	private Button playbutton = new Button();
 	@FXML
 	private Text textbox = new Text();
 	@FXML
-	private Slider volumeAdjuster = new Slider();
+	public TextField thresholdValue = new TextField();
 	
 	private ScheduledExecutorService timer1;
-	private ScheduledExecutorService timer2;
-	
-//	private Boolean flag = true;
-	
-	
+	private int index = 0;    //index for naming the STI images
+	private String filepath;
 	private VideoCapture capture;
-	private Hist[] currentHists;
-	private Hist[] preHists;
-	private float threshold;
-	
+	private Hist[] currentHists;   //array storing the histogram for the column in the current frame
+	private Hist[] preHists;       //array storing the histogram for the column in the previous frame
+	private float threshold;       //threshold for creating the binary STI image
 	private int width;
 	private int height;
-	private int center;
-	private int sampleRate; // sampling frequency
-	private int sampleSizeInBits;
-	private int numberOfChannels;
-	private double[] freq; // frequencies for each particular row
-	private int numberOfQuantizionLevels;
-	private int numberOfSamplesPerColumn;
 	
 	@FXML
 	private void initialize() {
-		// Optional: You should modify the logic so that the user can change these values
-		// You may also do some experiments with different values
+		// initialize everything
 		width = 32;
 		height = 32;
-		center = 50;
-		threshold = (float) 0.7;
-		sampleRate = 8000;
-		sampleSizeInBits = 8;
-		numberOfChannels = 1;
-		
-		numberOfQuantizionLevels = 16;
-		
-		numberOfSamplesPerColumn = 125;
-		
+		threshold = (float) 0.7;   //default threshold
+		thresholdValue.setText(Float.toString(threshold));
 		timer1 = Executors.newSingleThreadScheduledExecutor();
-//		timer2 = Executors.newSingleThreadScheduledExecutor();
-
-		volumeAdjuster.setValue(volumeAdjuster.getMax()/2);
-		
-		// assign frequencies for each particular row
-		freq = new double[height]; // Be sure you understand why it is height rather than width
-		freq[height/2-1] = 440.0; // 440KHz - Sound of A (La)
-		for (int m = height/2; m < height; m++) {
-			freq[m] = freq[m-1] * Math.pow(2, 1.0/12.0); 
-		}
-		for (int m = height/2-2; m >=0; m--) {
-			freq[m] = freq[m+1] * Math.pow(2, -1.0/12.0); 
-		}
 	}
 	
-	private String getImageFilename() {
-		// This method should return the filename of the image to be played
+	private String getVideoFilename() {
+		// This method should return the filename of the video to be played
 		 FileChooser fileChooser = new FileChooser();
 		 fileChooser.setTitle("Open Resource File");
 		 fileChooser.getExtensionFilters().addAll(
@@ -120,11 +81,10 @@ public class Controller {
 			 return "empty";
 		 }
 		return selectedFile.getAbsolutePath();
-		
-		//return "resources/test.mp4";
 	}
 	
 	private void shutdown(ScheduledExecutorService timer) throws InterruptedException {
+		//shut down the thread
 		if (timer != null && !timer.isShutdown()) {
 			timer.shutdown();
 			timer.awaitTermination(Math.round(1), TimeUnit.MILLISECONDS);
@@ -132,104 +92,84 @@ public class Controller {
 		imageView.setVisible(false);
 	}
 	
-	
 	@FXML
-	protected void openImage(ActionEvent event) throws InterruptedException {
-		// This method opens an image and display it using the GUI
-//		final String imageFilename = getImageFilename();
-//		image = Imgcodecs.imread(imageFilename);
-//		imageView.setImage(Utilities.mat2Image(image)); 
-		
-		String filepath = getImageFilename();
-		if (filepath == "empty") {
-			
-		} else {
+	protected void openVideo(ActionEvent event) throws InterruptedException {
+		// This method opens an Video and display it using the GUI
+		filepath = getVideoFilename();
+		if (filepath != "empty") {
 			shutdown(timer1);
-//			shutdown(timer2);
 			capture = new VideoCapture(filepath); // open video file
 			playbutton.setDisable(false);
-			playbutton.setText("Play");
-			textbox.setText("Press Play");
+			playbutton.setText("Analyze");
+			textbox.setText("Press Analyze");
 			textbox.setVisible(true);
 		}
-		
-		// You don't have to understand how mat2Image() works. 
-		// In short, it converts the image from the Mat format to the Image format
-		// The Mat format is used by the opencv library, and the Image format is used by JavaFX
-		// BTW, you should be able to explain briefly what opencv and JavaFX are after finishing this assignment
 	}
 	
 	@FXML
 	protected void createFrameGrabber() throws InterruptedException {
 		if (capture != null && capture.isOpened()) { // the video must be open
-			//double framePerSecond = capture.get(Videoio.CAP_PROP_FPS);
 			double totalFrameCount = capture.get(Videoio.CAP_PROP_FRAME_COUNT);
-//			int frameHeight = (int) capture.get(Videoio.CAP_PROP_FRAME_HEIGHT);
-//			int frameWidth = (int) capture.get(Videoio.CAP_PROP_FRAME_WIDTH);
-			int frameHeight = 32;
-			int frameWidth = 32;
+			int frameHeight = 32;    //resize parameter
+			int frameWidth = 32;     //resize parameter
 			int frameCount = (int) totalFrameCount;
-			double framePerSecond = 24;
+			double framePerSecond = 48;
+			// 2D array storing center column pixels from each frame of the video
 			int[][] STI_vertical = new int[frameCount][frameHeight];
+			// 2D array storing center row pixels from each frame of the video
 			int[][] STI_horizontal = new int[frameCount][frameWidth];
+			// 2D array storing histogram difference computed with current histogram and previous histogram
 			float[][] STI_histdiff = new float[frameCount][frameWidth];
 			
-		// create a runnable to fetch new frames periodically
+			// create a runnable to fetch new frames periodically
 			Runnable frameGrabber = new Runnable() {
 				@Override
 				public void run() {
 					Mat frame2 = new Mat();
 					if (capture.read(frame2)) { // decode successfully
 						Mat frame = new Mat();
-						Imgproc.resize(frame2, frame, new Size(width, height));
-						
+						Imgproc.resize(frame2, frame, new Size(width, height));   //resize the frame
 						Image im = Utilities.mat2Image(frame);
 						Utilities.onFXThread(imageView.imageProperty(), im);
 						double currentFrameNumber = capture.get(Videoio.CAP_PROP_POS_FRAMES);
-						
-//						double totalFrameCount = capture.get(Videoio.CAP_PROP_FRAME_COUNT);
 						int currentframe = (int) currentFrameNumber;
+						// grab center column from each frame
 						columnGrabber(frame, STI_vertical[currentframe - 1], frameHeight, frameWidth);
+						// grab center row from each frame
 						rowGrabber(frame, STI_horizontal[currentframe - 1], frameWidth, frameHeight);
-						
-
+						// if it is the first frame, set current frame and previous frame both to be the fist frame 
 						if (currentframe == 1) {
 							currentHists = frameHist(frame, frameHeight, frameWidth);
 							preHists = currentHists;
-							
-//							System.out.println("end of the frame");
 						}
-						
+						// otherwise, just as normal
 						preHists = currentHists;
 						currentHists = frameHist(frame, frameHeight, frameWidth);
+						// diffs stores histogram differences for one frame
 						float[] diffs = computediff(currentHists, preHists, frameWidth);
-//						for (int i=0;i<frameWidth;i++) {
-//						System.out.println("diff is " + diffs[i]);
-//					}
-						
-						
 						for (int i=0;i<frameWidth;i++) {
 							STI_histdiff[currentframe-1][i] = diffs[i];
-//							System.out.println("sti is " + STI_histdiff[currentframe-1][i]);
 						}
-						
-						
 						slider.setValue(currentFrameNumber / totalFrameCount * (slider.getMax() - slider.getMin()));
 					} else { // reach the end of the video
-//						capture.set(Videoio.CAP_PROP_POS_FRAMES, 0);
-//						for (int i=0;i<frameCount;i++) {
-//							for (int j=0;j<frameWidth;j++) {
-//								System.out.print(STI_histdiff[i][j]);
-//								System.out.print(" ");
-//							}
-//							System.out.println(" ");
-//						}
+						// 2D arrays storing RGB values for each pixel to create STI images
 						int[][] greyscale = createImage(STI_histdiff, frameCount, frameWidth);
 						int[][] binary = createBinary(STI_histdiff, frameCount, frameWidth, threshold);
-						
-						
 						timer1.shutdown();
-						
+						// update the GUI when the video analysis is finished
+						Platform.runLater(new Runnable()
+						{
+						@Override
+						public void run() {
+						   index += 1;
+						   playbutton.setText("Done");
+						   imageView.setVisible(false);
+						   textbox.setText("Please open another video");
+						   textbox.setVisible(true);
+						   playbutton.setDisable(true);
+						}
+						});
+						// create vertical STI image
 						BufferedImage VImage = new BufferedImage(frameCount, frameHeight, BufferedImage.TYPE_INT_ARGB);
 						for (int i=0;i<frameCount;i++) {
 							for (int j=0;j<frameHeight;j++) {
@@ -237,6 +177,7 @@ public class Controller {
 								VImage.setRGB(i, j, c.getRGB());
 							}
 						}
+						// create horizontal STI image
 						BufferedImage HImage = new BufferedImage(frameCount, frameWidth, BufferedImage.TYPE_INT_ARGB);
 						for (int i=0;i<frameCount;i++) {
 							for (int j=0;j<frameWidth;j++) {
@@ -244,6 +185,7 @@ public class Controller {
 								HImage.setRGB(i, j, c.getRGB());
 							}
 						}
+						// create histogram difference image
 						BufferedImage HistImage = new BufferedImage(frameCount, frameWidth, BufferedImage.TYPE_INT_RGB);
 						for (int i=0;i<frameCount;i++) {
 							for (int j=0;j<frameWidth;j++) {
@@ -252,7 +194,7 @@ public class Controller {
 								HistImage.setRGB(i, j, c.getRGB());
 							}
 						}
-						
+						// create threshold version of histogram difference image
 						BufferedImage BinaryImage = new BufferedImage(frameCount, frameWidth, BufferedImage.TYPE_INT_RGB);
 						for (int i=0;i<frameCount;i++) {
 							for (int j=0;j<frameWidth;j++) {
@@ -261,26 +203,21 @@ public class Controller {
 								BinaryImage.setRGB(i, j, c.getRGB());
 							}
 						}						
-						
-						
+						// write out the images
 						try {
-							ImageIO.write(VImage, "png", new File("STI_VImage.png"));
-							ImageIO.write(HImage, "png", new File("STI_HImage.png"));
-							ImageIO.write(HistImage, "png", new File("STI_HistImage.png"));
-							ImageIO.write(BinaryImage, "png", new File("STI_BinaryImage.png"));
+							ImageIO.write(VImage, "png", new File("STI_VImage_" + Integer.toString(index) + ".png"));
+							ImageIO.write(HImage, "png", new File("STI_HImage_" + Integer.toString(index) + ".png"));
+							ImageIO.write(HistImage, "png", new File("STI_HistImage_" + Integer.toString(index) + ".png"));
+							ImageIO.write(BinaryImage, "png", new File("STI_BinaryImage_" +Float.toString(threshold) + "_" + Integer.toString(index) + ".png"));
 						} catch (IOException e) {
-							// TODO Auto-generated catch block
-							System.out.println("wrong");
 							e.printStackTrace();
 						}
-						
 					}
 				}
 			};
 			
 		// terminate the timer if it is running
 			if (timer1 != null && !timer1.isShutdown()) {
-			
 				timer1.shutdown();
 				timer1.awaitTermination(Math.round(1000/framePerSecond), TimeUnit.MILLISECONDS);
 			}
@@ -291,15 +228,15 @@ public class Controller {
 		}
 	
 	protected void columnGrabber(Mat original, int[] rgbs, int frameHeight, int frameWidth) {
+		// grab the center column of the frame and store the RGB value of the pixels into an array 
 		BufferedImage image = Utilities.matToBufferedImage(original);
 	    for (int i=0;i<frameHeight;i++) {
 	    	rgbs[i] = image.getRGB(frameWidth/2, i);
-	    	
-	    	//System.out.println(rgbs[i]);
 	    }	    
 	}
 	
 	protected void rowGrabber(Mat original, int[] rgbs, int frameWidth, int frameHeight) {
+		// grab the center row of the frame and store the RGB value of the pixels into an array
 		BufferedImage image = Utilities.matToBufferedImage(original);
 	    for (int i=0;i<frameWidth;i++) {
 	    	rgbs[i] = image.getRGB(i, frameHeight/2);
@@ -307,6 +244,7 @@ public class Controller {
 	}
 	
 	protected Hist[] frameHist(Mat original, int frameHeight, int frameWidth) {
+		// calculate the histogram difference for one frame
 		int bins =(int) Math.floor(1.0 +Math.log10((double) frameHeight)/Math.log10(2.0));
 		Hist[] hists = new Hist[frameWidth];
 		for (int i=0;i<frameWidth;i++) {
@@ -314,12 +252,12 @@ public class Controller {
 			hist.columnHist(original, frameHeight, frameWidth, i);
 			convertor(hist, frameHeight);
 			hists[i] = hist;
-//			System.out.println(i + " frame");
 		}
 		return hists;
 	}
 	
 	protected void convertor(Hist ahist, int frameHeight) {
+		// normalize the histogram such that the sum of all entries is 1
 		for (int i=0;i<ahist.getSize();i++) {
 			for (int j=0;j<ahist.getSize();j++) {
 				ahist.getHist()[i][j] = ahist.getHist()[i][j] / frameHeight;
@@ -328,28 +266,25 @@ public class Controller {
 	}
 	
 	protected float[] computediff(Hist[] current, Hist[] pre, int frameWidth) {
-		float[] diff = new float[frameWidth];
+		// compute the histogram difference using current frame and previous frame and 
+		// return back an array storing differences for one frame
+		float[] diffs = new float[frameWidth];
 		for (int k=0;k<frameWidth;k++) {
 			for (int i=0;i<current[k].getSize();i++) {
 				for (int j=0;j<current[k].getSize();j++) {
-//					System.out.println("current is " + current[k].getHist()[i][j]);
 					if (current[k].getHist()[i][j] <= pre[k].getHist()[i][j]) {
-						diff[k] += current[k].getHist()[i][j];
+						diffs[k] += current[k].getHist()[i][j];
 				} else {
-					diff[k] += pre[k].getHist()[i][j];
+					diffs[k] += pre[k].getHist()[i][j];
+				}
 				}
 			}
-//				System.out.println("diff is " + diff);
-		}
-		}
-//		for (int i=0;i<frameWidth;i++) {
-//			System.out.println("diff is " + diff[i]);
-//		}
-//		
-		return diff;
+		}	
+		return diffs;
 	}
 	
 	protected int[][] createImage(float[][] bytes, int frameCount, int frameWidth) {
+		// convert the histogram differences to RGB values
 		int[][] greyscale = new int[frameCount][frameWidth];
 		for (int i=0;i<frameCount;i++) {
 			for (int j=0;j<frameWidth;j++) {
@@ -360,6 +295,7 @@ public class Controller {
 	}
 	
 	protected int[][] createBinary(float[][] bytes, int frameCount, int frameWidth, float threshold) {
+		// divide the values into 0 and 1
 		int[][] binary = new int[frameCount][frameWidth];
 		for (int i=0;i<frameCount;i++) {
 			for (int j=0;j<frameWidth;j++) {
@@ -373,132 +309,41 @@ public class Controller {
 		return binary;
 	}
 	
-	
 	@FXML
 	protected void playVideo(ActionEvent event) throws LineUnavailableException, InterruptedException {
+		// play the video when the user clicks "analyze"
 		if (capture.isOpened()) {
 			// open successfully
 			if (playbutton.getText() == "Stop") {
 				shutdown(timer1);
-//				shutdown(timer2);
-				playbutton.setText("Play");
+				capture = new VideoCapture(filepath);
+				playbutton.setText("Analyze");
 				textbox.setVisible(true);
 				return ;
 			}
-			playbutton.setText("Stop");
-			textbox.setVisible(false);
-			imageView.setVisible(true);
-			createFrameGrabber();
-		}
-//		double framePerSecond = capture.get(Videoio.CAP_PROP_FPS);
-//		Runnable audioGrabber = new Runnable() {
-//			@Override
-//			public void run()  {
-//				try {
-////					playImage();
-////					playClick();
-//					
-//				} catch (LineUnavailableException e) {
-//					e.printStackTrace();
-//				}
-//				catch (IOException e) {
-//					e.printStackTrace();
-//				}
-//			}
-//		};
-//		if (timer2 != null && !timer2.isShutdown()) {
-//			timer2.shutdown();
-//			timer2.awaitTermination(Math.round(1000/framePerSecond), TimeUnit.MILLISECONDS);
-//		}
-//		timer2 = Executors.newSingleThreadScheduledExecutor();
-//		timer2.scheduleAtFixedRate(audioGrabber, 0, Math.round(1000/framePerSecond), TimeUnit.MILLISECONDS);
-	}
-	
-	protected float getVolume(Clip clip) {
-	    FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);        
-	    return (float) Math.pow(10f, gainControl.getValue() / 20f);
-	}
-
-	protected void setVolume(float volume, Clip clip) {
-	    if (volume < 0f || volume > 1f)
-	        throw new IllegalArgumentException("Volume not valid: " + volume);
-	    FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);        
-	    gainControl.setValue(20f * (float) Math.log10(volume));
-	}
-	
-	
-	protected float getVolume(SourceDataLine audiovolume) {
-	    FloatControl gainControl = (FloatControl) audiovolume.getControl(FloatControl.Type.MASTER_GAIN);        
-	    return (float) Math.pow(10f, gainControl.getValue() / 20f);
-	}
-	
-	protected void setVolume(float volume, SourceDataLine audiovolume) {
-	    if (volume < 0f || volume > 1f)
-	        throw new IllegalArgumentException("Volume not valid: " + volume);
-	    FloatControl gainControl = (FloatControl) audiovolume.getControl(FloatControl.Type.MASTER_GAIN);        
-	    gainControl.setValue(20f * (float) Math.log10(volume));
-	}
-	
-	protected void playClick() throws IOException, LineUnavailableException {
-		try {
-			File soundFile = new File("resources/click.wav");
-			AudioInputStream audioIn = AudioSystem.getAudioInputStream(soundFile);
-			Clip clip = AudioSystem.getClip();
-			clip.open(audioIn);
-			float volume = (float) (volumeAdjuster.getValue()/(slider.getMax() - slider.getMin()));
-			setVolume(volume * 1f, clip);
-			clip.start();
-		}
-		catch (UnsupportedAudioFileException e) {
-			System.out.println("audio file type unsupported");
+			String textValue = thresholdValue.getText();
+			if (textValue.matches("0(\\.\\d+)?|1(\\.0)?")) {
+				threshold = Float.parseFloat(textValue);
+				playbutton.setText("Stop");
+				textbox.setVisible(false);
+				imageView.setVisible(true);
+				createFrameGrabber();
+			} else {
+				new Alert(Alert.AlertType.ERROR, "Please insert threshold value between 0 and 1").showAndWait();
+			}
 		}
 	}
 	
-//	protected void playImage() throws LineUnavailableException {		
-//		if (image != null) {
-//			// convert the image from RGB to greyscale
-//			Mat grayImage = new Mat();
-//			Imgproc.cvtColor(image, grayImage, Imgproc.COLOR_BGR2GRAY);
-//			
-//			// resize the image
-//			Mat resizedImage = new Mat();
-//			Imgproc.resize(grayImage, resizedImage, new Size(width, height));
-//			
-//			// quantization
-//			double[][] roundedImage = new double[resizedImage.rows()][resizedImage.cols()];
-//			for (int row = 0; row < resizedImage.rows(); row++) {
-//				for (int col = 0; col < resizedImage.cols(); col++) {
-//					roundedImage[row][col] = (double)Math.floor(resizedImage.get(row, col)[0]/numberOfQuantizionLevels) / numberOfQuantizionLevels;
-//				}
-//			}
-//			
-//	        AudioFormat audioFormat = new AudioFormat(sampleRate, sampleSizeInBits, numberOfChannels, true, true);
-//            SourceDataLine sourceDataLine = AudioSystem.getSourceDataLine(audioFormat);
-//            sourceDataLine.open(audioFormat, sampleRate);
-//            
-//            float volume = (float) (volumeAdjuster.getValue()/(slider.getMax() - slider.getMin()));
-//            setVolume(volume * 1f, sourceDataLine);
-//            sourceDataLine.start();
-//            
-//            for (int col = 0; col < width; col++) {
-//            	byte[] audioBuffer = new byte[numberOfSamplesPerColumn];
-//            	for (int t = 1; t <= numberOfSamplesPerColumn; t++) {
-//            		double signal = 0;
-//                	for (int row = 0; row < height; row++) {
-//                		int m = height - row - 1; // Be sure you understand why it is height rather width, and why we subtract 1 
-//                		int time = t + col * numberOfSamplesPerColumn;
-//                		double ss = Math.sin(2 * Math.PI * freq[m] * (double)time/sampleRate);
-//                		signal += roundedImage[row][col] * ss;
-//                	}
-//                	double normalizedSignal = signal / height; // signal: [-height, height];  normalizedSignal: [-1, 1]
-//                	audioBuffer[t-1] = (byte) (normalizedSignal*0x7F); // Be sure you understand what the weird number 0x7F is for
-//            	}
-//            	sourceDataLine.write(audioBuffer, 0, numberOfSamplesPerColumn);
-//            }
-//            sourceDataLine.drain();
-//            sourceDataLine.close();
-//		} else {
-//			//System.out.println("No image");
-//		}
-//	} 
+	@FXML
+	protected void changeThreshold(KeyEvent event) {
+		// change the threshold for creating binary STI image when the user submits the input
+		if (event.getCode().equals(KeyCode.ENTER)) {
+			String textValue = thresholdValue.getText();
+			if (textValue.matches("0(\\.\\d+)?|1(\\.0)?")) {
+				threshold = Float.parseFloat(textValue);
+			} else {
+				new Alert(Alert.AlertType.ERROR, "Please insert threshold value between 0 and 1").showAndWait();
+			}
+		}
+	}
   }

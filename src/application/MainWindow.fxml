@@ -18,39 +18,7 @@
    <bottom>
       <VBox prefHeight="111.0" prefWidth="600.0" BorderPane.alignment="CENTER">
          <children>
-            <HBox alignment="CENTER" prefHeight="68.0" prefWidth="600.0">
-               <children>
-                  <Button mnemonicParsing="false" onAction="#openImage" prefHeight="40.0" prefWidth="100.0" stylesheets="@application.css" text="Open">
-                     <HBox.margin>
-                        <Insets left="0.0" top="20.0" />
-                     </HBox.margin>
-                  </Button>
-                  <Text fill="WHITE" strokeType="OUTSIDE" strokeWidth="0.0" text="-" translateY="10.0">
-                     <HBox.margin>
-                        <Insets left="10.0" right="5.0" />
-                     </HBox.margin>
-                  </Text>
-                  <Slider fx:id="volumeAdjuster" scaleY="0.8" styleClass="Slider" translateX="00.0" translateY="10.0" />
-                  <Text fill="WHITE" strokeType="OUTSIDE" strokeWidth="0.0" text="+" translateY="10.0">
-                     <HBox.margin>
-                        <Insets right="10.0" />
-                     </HBox.margin>
-                  </Text>
-                  <Button fx:id="playbutton" disable="true" mnemonicParsing="false" onAction="#playVideo" prefHeight="40.0" prefWidth="100.0" text="Play">
-                     <HBox.margin>
-                        <Insets left="0.0" top="20.0" />
-                     </HBox.margin>
-                  </Button>
-               </children>
-               <VBox.margin>
-                  <Insets />
-               </VBox.margin>
-            </HBox>
-            <HBox alignment="CENTER" prefHeight="100.0" prefWidth="200.0">
-               <children>
-                  <Text fill="WHITE" strokeType="OUTSIDE" strokeWidth="0.0" text="Sense O'Vision&#10;Creators: Nan Liu | Joshil Patel&#10;SFU | CMPT 365" textAlignment="CENTER" wrappingWidth="505.638671875" />
-               </children>
-            </HBox>
+            <HBox alignment="CENTER" prefHeight="100.0" prefWidth="200.0" />
          </children>
       </VBox>
    </bottom>
@@ -59,7 +27,7 @@
          <children>
             <ImageView fx:id="imageView" fitHeight="263.0" fitWidth="421.0" pickOnBounds="true" preserveRatio="true">
                <VBox.margin>
-                  <Insets left="0.0" top="10.0" />
+                  <Insets top="30.0" />
                </VBox.margin>
             </ImageView>
             <Text fx:id="textbox" fill="WHITE" scaleX="1.5" scaleY="1.5" strokeType="OUTSIDE" strokeWidth="0.0" text="Please open a video" textAlignment="CENTER" translateY="-125.0" wrappingWidth="249.6708984375" />
@@ -71,4 +39,34 @@
          </children>
       </VBox>
    </center>
+   <left>
+      <VBox alignment="TOP_CENTER" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="289.0" prefWidth="160.0" BorderPane.alignment="CENTER">
+         <children>
+            <Button mnemonicParsing="false" onAction="#openVideo" prefHeight="40.0" prefWidth="100.0" stylesheets="@application.css" text="Open">
+               <VBox.margin>
+                  <Insets top="40.0" />
+               </VBox.margin>
+            </Button>
+            <Button fx:id="playbutton" disable="true" mnemonicParsing="false" onAction="#playVideo" prefHeight="40.0" prefWidth="100.0" text="Analyze">
+               <VBox.margin>
+                  <Insets top="40.0" />
+               </VBox.margin>
+            </Button>
+            <Text fill="WHITE" strokeType="OUTSIDE" strokeWidth="0.0" text="Threshold:">
+               <VBox.margin>
+                  <Insets top="40.0" />
+               </VBox.margin>
+            </Text>
+            <TextField fx:id="thresholdValue" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" onKeyPressed="#changeThreshold" prefHeight="30.0" prefWidth="50.0" />
+            <Text fill="WHITE" strokeType="OUTSIDE" strokeWidth="0.0" text="Transition Analyszer&#10;Nan Liu | Joshil Patel&#10;SFU | CMPT 365" textAlignment="CENTER" wrappingWidth="505.638671875">
+               <VBox.margin>
+                  <Insets top="40.0" />
+               </VBox.margin>
+            </Text>
+         </children>
+      </VBox>
+   </left>
+   <padding>
+      <Insets top="20.0" />
+   </padding>
 </BorderPane>
